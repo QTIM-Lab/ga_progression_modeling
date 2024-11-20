@@ -1,0 +1,14 @@
+# folders
+data/
+misc/
+notebooks/
+.ipynb_checkpoints/
+.vscode/
+results/
+__pycache__/
+
+# files
+*.pptx
+*.png
+*.j2k
+*.csv
