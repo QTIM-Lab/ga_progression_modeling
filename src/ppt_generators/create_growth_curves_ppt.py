@@ -50,7 +50,7 @@ def is_valid_date(date_string):
     return False
 
 def load_image(path, size=(256, 256), mode='rgb'):
-    x = Image.open(path)
+    x = Image.open(path.replace('~', '/home/veturiy'))
     x = Resize(size)(x)
     x = Grayscale()(x) if mode == 'gray' else x
     x = ToTensor()(x)
@@ -60,7 +60,8 @@ def apply_registration(image_tensor, seg_tensor, grid_path):
 
     # handle unregistered images
     if isinstance(grid_path, float) and isnan(grid_path):
-        return torch.zeros_like(image_tensor).squeeze(0), torch.zeros_like(seg_tensor).squeeze(0), np.eye(3)
+        # return torch.zeros_like(image_tensor).squeeze(0), torch.zeros_like(seg_tensor).squeeze(0), np.eye(3)
+        return image_tensor.squeeze(0), seg_tensor.squeeze(0), np.eye(3)
 
     # Load the sampling grid
     params, grid = torch.load(grid_path)
@@ -202,14 +203,14 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
         # if overlap(registered_seg, baseline_seg) > 0.5:
         # remove cases with drastic transformations in the affine matrix
         # comment if using deviation metric
-        if deviation(aff) < 0.1:
-            image_with_contours = draw_contours(registered_image, registered_seg)
-            longitudinal_segs.append(registered_seg)
-            image_without_contours = (registered_image * 255.).int()
-        
-            # save registered images
-            frames_with_contours.append(tensor_to_numpy(image_with_contours))
-            frames_without_contours.append(tensor_to_numpy(image_without_contours))
+        # if deviation(aff) < 0.1:
+        image_with_contours = draw_contours(registered_image, registered_seg)
+        longitudinal_segs.append(registered_seg)
+        image_without_contours = (registered_image * 255.).int()
+    
+        # save registered images
+        frames_with_contours.append(tensor_to_numpy(image_with_contours))
+        frames_without_contours.append(tensor_to_numpy(image_without_contours))
 
         # compute AI area
         if config.area_ai_col is not None:
@@ -257,28 +258,28 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
 
     # Create a figure with subplots that share the same x-axis
     min_date, max_date, min_area, max_area, min_peri, max_peri, min_foci, max_foci = limits
-    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    fig, axs = plt.subplots(1, 1, figsize=(7, 8), sharex=True)
 
     # area vs time
-    axs[0].plot(timepoints, areas_ai, 'ro-', color='red')
-    axs[0].plot(timepoints, areas_manual, 'ro-', color='blue')
-    axs[0].legend(['AI-computed Area', 'Manual'])
-    axs[0].set_ylabel('GA Area (mm$^2$)')  # LaTeX formatting for mm²
-    axs[0].set_xlim(min_date, max_date)
-    axs[0].set_ylim(0, max_area)
+    axs.plot(timepoints, areas_ai, 'ro-', color='red')
+    axs.plot(timepoints, areas_manual, 'ro-', color='blue')
+    axs.legend(['AI-computed Area', 'Manual'])
+    axs.set_ylabel('GA Area (mm$^2$)')  # LaTeX formatting for mm²
+    axs.set_xlim(min_date, max_date)
+    axs.set_ylim(0, max_area)
 
-    # perimeter vs time
-    axs[1].plot(timepoints, perimeters_ai, 'ro-', color='red')
-    axs[1].set_ylabel('GA Perimeter (mm)')
-    axs[1].set_xlim(min_date, max_date)
-    axs[1].set_ylim(0, max_peri)
+    # # perimeter vs time
+    # axs[1].plot(timepoints, perimeters_ai, 'ro-', color='red')
+    # axs[1].set_ylabel('GA Perimeter (mm)')
+    # axs[1].set_xlim(min_date, max_date)
+    # axs[1].set_ylim(0, max_peri)
 
-    # number of foci vs time
-    axs[2].plot(timepoints, n_foci_ai, 'ro-', color='red')
-    axs[2].set_xlabel('Time')
-    axs[2].set_ylabel('Number of GA Foci')
-    axs[2].set_xlim(min_date, max_date)
-    axs[2].set_ylim(0, max_foci)
+    # # number of foci vs time
+    # axs[2].plot(timepoints, n_foci_ai, 'ro-', color='red')
+    # axs[2].set_xlabel('Time')
+    # axs[2].set_ylabel('Number of GA Foci')
+    # axs[2].set_xlim(min_date, max_date)
+    # axs[2].set_ylim(0, max_foci)
 
     # Rotate x-axis tick labels vertically
     plt.xticks(rotation=90)
@@ -321,8 +322,8 @@ def prepare_presentation_slide(slide, slide_title, video_with_contours_path, vid
     plot_height = Inches(5.67)
     # bypass plot path with gompertz
     mrn, lat, _ = os.path.basename(plot_path).split('_')
-    if os.path.exists(os.path.join(args.results_folder, f'gompertz_data_af/gompertz_plots/gompertz-curve-plot-{mrn}_{lat}.png')):
-        plot_path = os.path.join(args.results_folder, f'gompertz_data_af/gompertz_plots/gompertz-curve-plot-{mrn}_{lat}.png')
+    if os.path.exists(os.path.join(args.results_folder, f'gompertz_data_af/gompertz_plots/gompertz-fit-{mrn}_{lat}.png')):
+        plot_path = os.path.join(args.results_folder, f'gompertz_data_af/gompertz_plots/gompertz-fit-{mrn}_{lat}.png')
 
     if os.path.exists(plot_path):
         slide.shapes.add_picture(plot_path, Inches(4.5), Inches(1.5), width=plot_width, height=plot_height)
@@ -346,7 +347,7 @@ if __name__ == '__main__':
 
     df = pd.read_csv(file)
     # remove all paths where registration failed
-    df = df[df.status != 'Fail']
+    # df = df[df.status != 'Fail']
     if is_valid_date(df[args.date_col].min()):
         df[args.date_col] = pd.to_datetime(df[args.date_col])
 

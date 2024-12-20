@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
-python src/create_ppt.py \
---results-folder results/11132024_talisa_ga/ \
+python src/ppt_generators/create_growth_curves_ppt.py \
+--results-folder results/10182024_talisa/ \
 --results-file registration_results_af/results.csv \
 --img-col file_path_coris \
 --seg-col file_path_ga_seg \

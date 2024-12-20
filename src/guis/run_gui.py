@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 # Load the CSV files
-data = 'results/07312024/area_comparisons.csv' # 'data/GA_progression_modelling/ga_area_comparison_results_2.csv'
+data = 'results/10182024_talisa/area_comparisons_af.csv' #'results/07312024/area_comparisons.csv' # 'data/GA_progression_modelling/ga_area_comparison_results_2.csv'
 x = 'GA Size Final'
 y = 'mm_area' # 'total_area_mm'
 df = pd.read_csv(data)
@@ -32,6 +32,7 @@ def overlay_segmentation(image_path, segmentation_path):
 
         # Open the binary segmentation image (PNG) using OpenCV
         seg_img = cv2.imread(segmentation_path, cv2.IMREAD_GRAYSCALE)
+        seg_img = cv2.resize(seg_img, img.size)
 
         # Create a contour from the segmentation image
         contours, _ = cv2.findContours(seg_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

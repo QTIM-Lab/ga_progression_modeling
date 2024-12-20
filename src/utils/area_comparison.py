@@ -1,5 +1,7 @@
 # import libraries
 import os, sys
+import argparse 
+
 import pandas as pd
 import numpy as np
 from PIL import Image
@@ -54,182 +56,157 @@ def compute_ncc(seg, size, area_threshold=100):
 
     return ncc, filtered_img
 
-# CSVs
-imaging_data = '/sddata/projects/GA_progression_modeling/data/GA_progression_modelling_data_redone/clean_data_coris_09162024.csv'
-save_to = 'results/11142024_coris/'
-filename = 'area_comparisons_af.csv'
-image_column = 'file_path_coris'
-ga_seg_column = 'file_path_ga_seg'
-vessel_seg_column = 'file_path_vessel_seg'
-patient_id_column = 'PID'
-laterality_column = 'Laterality'
-date_column = 'ExamDate'
-seg_mode = 'Af'
+if __name__ == '__main__':
 
-# load imaging data
-df_imaging_data = pd.read_csv(imaging_data)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--image_data')
+    parser.add_argument('--img_col')
+    parser.add_argument('--ga_col')
+    parser.add_argument('--vessel_col')
+    parser.add_argument('--pid_col')
+    parser.add_argument('--laterality_col')
+    parser.add_argument('--date_col')
+    parser.add_argument('--modality')
+    parser.add_argument('--manual_area_data')
+    parser.add_argument('--save_as')
+    args = parser.parse_args()
 
-# ===============
-# compute AI area
-# ===============
-for mrn, mrn_df in df_imaging_data.groupby(patient_id_column):
-    for lat, lat_df in mrn_df.groupby(laterality_column):
-        for date, date_df in lat_df.groupby(date_column):
+    # get inputs
+    imaging_data = args.image_data
+    save_to = args.save_as
+    image_column = args.img_col
+    ga_seg_column = args.ga_col
+    vessel_seg_column = args.vessel_col
+    patient_id_column = args.pid_col
+    laterality_column = args.laterality_col
+    date_column = args.date_col
+    manual_area_data = args.manual_area_data
+    seg_mode = args.modality
 
-            # get slo and af rows
-            slo = date_df[(date_df.Procedure == 'Ir_oct') & (date_df.type == 'SLOImage')]
-            if seg_mode == 'Af':
-                af = date_df[date_df.Procedure == 'Af']
-                idx = af.index
-                print(f'Af: {len(af)}, Ir: {len(slo)}')
-            elif seg_mode == 'Ir':
-                af = date_df[(date_df.Procedure == 'Ir_oct') & (date_df.type == 'SLOImage')]
-                idx = af.index
-                print(f'Ir: {len(af)}')
-            else:
-                raise ValueError('GA size calculations only supported for Af and Ir types!')
+    # load imaging data
+    df_imaging_data = pd.read_csv(imaging_data)
 
-            # handle more than one AF case
-            number_of_foci = []
-            px_perimeter = []
-            mm_perimeter = []
-            px_areas = []
-            mm_areas = []
-            for i, af_row in af.iterrows():
-                for j, slo_row in slo.iterrows():
-                    xslo, yslo, scale_x, scale_y = int(slo_row.XSlo), int(slo_row.YSlo), slo_row.Scale_X, slo_row.Scale_Y
-                    
-                    # compute area of lesion
-                    px_area = compute_pixel_area(af_row[ga_seg_column], (xslo, yslo))
-                    mm_area = px_area * scale_x * scale_y
-                    px_areas.append(px_area)
-                    mm_areas.append(mm_area)
+    # ===============
+    # compute AI area
+    # ===============
+    for mrn, mrn_df in df_imaging_data.groupby(patient_id_column):
+        for lat, lat_df in mrn_df.groupby(laterality_column):
+            for date, date_df in lat_df.groupby(date_column):
 
-                    # compute perimeter of lesion
-                    px_peri = compute_pixel_perimeter(af_row[ga_seg_column], (xslo, yslo))
-                    mm_peri = px_peri * scale_x
-                    px_perimeter.append(px_peri)
-                    mm_perimeter.append(mm_peri)
+                # get slo and af rows
+                slo = date_df[(date_df.Procedure == 'Ir_oct') & (date_df.type == 'SLOImage')]
+                if seg_mode == 'Af':
+                    af = date_df[date_df.Procedure == 'Af']
+                    idx = af.index
+                    print(f'Af: {len(af)}, Ir: {len(slo)}')
+                elif seg_mode == 'Ir':
+                    af = date_df[(date_df.Procedure == 'Ir_oct') & (date_df.type == 'SLOImage')]
+                    idx = af.index
+                    print(f'Ir: {len(af)}')
+                else:
+                    raise ValueError('GA size calculations only supported for Af and Ir types!')
 
-                    # compute number of connected components
-                    ncc, _ = compute_ncc(af_row[ga_seg_column], (xslo, yslo))
-                    # cv2.imwrite(os.path.join('results/09172024_iveric/images_with_contours', f'{mrn}_{lat}_{date}_{i}_{j}.png'), img)
-                    assert isinstance(ncc, int), ncc
-                    number_of_foci.append(ncc)
+                # handle more than one AF case
+                number_of_foci = []
+                px_perimeter = []
+                mm_perimeter = []
+                px_areas = []
+                mm_areas = []
+                for i, af_row in af.iterrows():
+                    for j, slo_row in slo.iterrows():
+                        xslo, yslo, scale_x, scale_y = int(slo_row.XSlo), int(slo_row.YSlo), slo_row.Scale_X, slo_row.Scale_Y
+                        
+                        # compute area of lesion
+                        px_area = compute_pixel_area(af_row[ga_seg_column], (xslo, yslo))
+                        mm_area = px_area * scale_x * scale_y
+                        px_areas.append(px_area)
+                        mm_areas.append(mm_area)
 
-            df_imaging_data.loc[idx, 'px_area'] = np.mean(px_areas)
-            df_imaging_data.loc[idx, 'mm_area'] = np.mean(mm_areas)
-            df_imaging_data.loc[idx, 'px_perimeter'] = np.mean(px_perimeter)
-            df_imaging_data.loc[idx, 'mm_perimeter'] = np.mean(mm_perimeter)
-            df_imaging_data.loc[idx, 'n_foci'] = np.mean(number_of_foci)
+                        # compute perimeter of lesion
+                        px_peri = compute_pixel_perimeter(af_row[ga_seg_column], (xslo, yslo))
+                        mm_peri = px_peri * scale_x
+                        px_perimeter.append(px_peri)
+                        mm_perimeter.append(mm_peri)
 
-# if seg_mode == 'Af':
-#     df_imaging_data_af = df_imaging_data[df_imaging_data.Procedure == 'Af'].reset_index(drop=True)
+                        # compute number of connected components
+                        ncc, _ = compute_ncc(af_row[ga_seg_column], (xslo, yslo))
+                        assert isinstance(ncc, int), ncc
+                        number_of_foci.append(ncc)
 
-#     for idx, row in df_imaging_data_af.iterrows():
-#         mrn, lat, date = row[patient_id_column], row[laterality_column], row[date_column]
+                df_imaging_data.loc[idx, 'px_area'] = np.mean(px_areas)
+                df_imaging_data.loc[idx, 'mm_area'] = np.mean(mm_areas)
+                df_imaging_data.loc[idx, 'px_perimeter'] = np.mean(px_perimeter)
+                df_imaging_data.loc[idx, 'mm_perimeter'] = np.mean(mm_perimeter)
+                df_imaging_data.loc[idx, 'n_foci'] = np.mean(number_of_foci)
 
-#         for j, slo_row in slo.iterrows():
-#             xslo, yslo, scale_x, scale_y = int(slo_row.XSlo), int(slo_row.YSlo), slo_row.Scale_X, slo_row.Scale_Y
+    # if seg_mode == 'Af':
+    #     df_imaging_data_af = df_imaging_data[df_imaging_data.Procedure == 'Af'].reset_index(drop=True)
 
-#             # get slo and af rows
-#             slo = df_imaging_data[(df_imaging_data[patient_id_column] == mrn) & (df_imaging_data[laterality_column] == lat) & (df_imaging_data[date_column] == date) & (df_imaging_data.Procedure == 'Ir_oct') & (df_imaging_data.type == 'SLOImage')]
+    #     for idx, row in df_imaging_data_af.iterrows():
+    #         mrn, lat, date = row[patient_id_column], row[laterality_column], row[date_column]
 
-#             # compute area of lesion
-#             px_area = compute_pixel_area(row[ga_seg_column], (xslo, yslo))
-#             mm_area = px_area * scale_x * scale_y
-#             px_areas.append(px_area)
-#             mm_areas.append(mm_area)
+    #         for j, slo_row in slo.iterrows():
+    #             xslo, yslo, scale_x, scale_y = int(slo_row.XSlo), int(slo_row.YSlo), slo_row.Scale_X, slo_row.Scale_Y
 
-#             # compute perimeter of lesion
-#             px_peri = compute_pixel_perimeter(row[ga_seg_column], (xslo, yslo))
-#             mm_peri = px_peri * scale_x
-#             px_perimeter.append(px_peri)
-#             mm_perimeter.append(mm_peri)
+    #             # get slo and af rows
+    #             slo = df_imaging_data[(df_imaging_data[patient_id_column] == mrn) & (df_imaging_data[laterality_column] == lat) & (df_imaging_data[date_column] == date) & (df_imaging_data.Procedure == 'Ir_oct') & (df_imaging_data.type == 'SLOImage')]
 
-#             # compute number of connected components
-#             ncc, _ = compute_ncc(row[ga_seg_column], (xslo, yslo))
-#             assert isinstance(ncc, int), ncc
-#             number_of_foci.append(ncc)
+    #             # compute area of lesion
+    #             px_area = compute_pixel_area(row[ga_seg_column], (xslo, yslo))
+    #             mm_area = px_area * scale_x * scale_y
+    #             px_areas.append(px_area)
+    #             mm_areas.append(mm_area)
 
-#             df_imaging_data_af.loc[idx, 'px_area'] = np.mean(px_areas)
-#             df_imaging_data_af.loc[idx, 'mm_area'] = np.mean(mm_areas)
-#             df_imaging_data_af.loc[idx, 'px_perimeter'] = np.mean(px_perimeter)
-#             df_imaging_data_af.loc[idx, 'mm_perimeter'] = np.mean(mm_perimeter)
-#             df_imaging_data_af.loc[idx, 'n_foci'] = np.mean(number_of_foci)
+    #             # compute perimeter of lesion
+    #             px_peri = compute_pixel_perimeter(row[ga_seg_column], (xslo, yslo))
+    #             mm_peri = px_peri * scale_x
+    #             px_perimeter.append(px_peri)
+    #             mm_perimeter.append(mm_peri)
 
-# ================
-# get manual areas
-# ================
-df_ga_manual = pd.read_excel('data/GA_progression_modelling_data_redone/Jayashree GA Size Cohort 1 + 2.xlsx')
-df_ga_manual = df_ga_manual[['SID', 'MRN', 'Eye', 'Date FAF', 'GA Size 1', 'GA Size 2', 'GA Size Adjudication', 'GA Size Final', 'Date LAST FAF (Up to 6/2023)', 'GA Size Last 1', 'GA Size Last 2', 'GA Size Last Adjudication', 'GA Size Last Final']]
+    #             # compute number of connected components
+    #             ncc, _ = compute_ncc(row[ga_seg_column], (xslo, yslo))
+    #             assert isinstance(ncc, int), ncc
+    #             number_of_foci.append(ncc)
 
-# chunk dataset into two parts
-df_ga_manual_t1 = df_ga_manual[['SID', 'MRN', 'Eye', 'Date FAF', 'GA Size 1', 'GA Size 2', 'GA Size Adjudication', 'GA Size Final']]
-df_ga_manual_t2 = df_ga_manual[['SID', 'MRN', 'Eye', 'Date LAST FAF (Up to 6/2023)', 'GA Size Last 1', 'GA Size Last 2', 'GA Size Last Adjudication', 'GA Size Last Final']]
-df_ga_manual_t2 = df_ga_manual_t2.rename(columns={
-    'Date LAST FAF (Up to 6/2023)': 'Date FAF',
-    'GA Size Last 1': 'GA Size 1',
-    'GA Size Last 2': 'GA Size 2',
-    'GA Size Last Adjudication': 'GA Size Adjudication',
-    'GA Size Last Final': 'GA Size Final'
-})
+    #             df_imaging_data_af.loc[idx, 'px_area'] = np.mean(px_areas)
+    #             df_imaging_data_af.loc[idx, 'mm_area'] = np.mean(mm_areas)
+    #             df_imaging_data_af.loc[idx, 'px_perimeter'] = np.mean(px_perimeter)
+    #             df_imaging_data_af.loc[idx, 'mm_perimeter'] = np.mean(mm_perimeter)
+    #             df_imaging_data_af.loc[idx, 'n_foci'] = np.mean(number_of_foci)
 
-# concatenate the chunks
-df_ga_manual = pd.concat([df_ga_manual_t1, df_ga_manual_t2], axis=0, ignore_index=True)
-df_ga_manual = df_ga_manual[~df_ga_manual['GA Size Final'].isnull()]
-df_ga_manual['Date FAF'] = pd.to_datetime(df_ga_manual['Date FAF'])
+    # ================
+    # get manual areas
+    # ================
+    df_ga_manual = pd.read_excel(manual_area_data)
+    df_ga_manual = df_ga_manual[['SID', 'MRN', 'Eye', 'faf_date', 'GA Size 1 (Final)', 'Latest FAF date (before 6/2023)', 'GA Size 2 (Final)']]
 
-# ====================================
-# Merge manual area df with AI area df
-# ====================================
+    # chunk dataset into two parts
+    df_ga_manual_t1 = df_ga_manual[['SID', 'MRN', 'Eye', 'faf_date', 'GA Size 1 (Final)']]
+    df_ga_manual_t1 = df_ga_manual_t1.rename(columns={
+        'GA Size 1 (Final)': 'GA Size'
+    })
+    df_ga_manual_t2 = df_ga_manual[['SID', 'MRN', 'Eye', 'Latest FAF date (before 6/2023)', 'GA Size 2 (Final)']]
+    df_ga_manual_t2 = df_ga_manual_t2.rename(columns={
+        'Date LAST FAF (Up to 6/2023)': 'faf_date',
+        'GA Size 2 (Final)': 'GA Size'
+    })
 
-if seg_mode == 'Af':
-    df_af = df_imaging_data[df_imaging_data.Procedure == 'Af'].copy()
-    df_af[date_column] = pd.to_datetime(df_af[date_column])
-elif seg_mode == 'Ir':
-    df_af = df_imaging_data[(df_imaging_data.Procedure == 'Ir_oct') & (df_imaging_data.type == 'SLOImage')].copy()
-    df_af[date_column] = pd.to_datetime(df_af[date_column])
+    # concatenate the chunks
+    df_ga_manual = pd.concat([df_ga_manual_t1, df_ga_manual_t2], axis=0, ignore_index=True)
+    df_ga_manual = df_ga_manual[~df_ga_manual['GA Size'].isnull()]
+    df_ga_manual['faf_date'] = pd.to_datetime(df_ga_manual['faf_date'])
 
-print(len(df_af))
+    # ====================================
+    # Merge manual area df with AI area df
+    # ====================================
 
-# merge df_af with df_ga_manual
-merged_df = pd.merge(df_af, df_ga_manual.rename({'MRN': patient_id_column, 'Eye': laterality_column, 'Date FAF': date_column}, axis=1), how='left')
+    if seg_mode == 'Af':
+        df_af = df_imaging_data[df_imaging_data.Procedure == 'Af'].copy()
+        df_af[date_column] = pd.to_datetime(df_af[date_column])
+    elif seg_mode == 'Ir':
+        df_af = df_imaging_data[(df_imaging_data.Procedure == 'Ir_oct') & (df_imaging_data.type == 'SLOImage')].copy()
+        df_af[date_column] = pd.to_datetime(df_af[date_column])
 
-print(len(merged_df))
-
-# ====================================
-# Merge metadata
-# ====================================
-
-# extra: merge on dob column: for getting age at baseline visit
-df_patient_data = pd.read_csv('data/GA_progression_modelling_data_redone/AMDDatabaseLogitudin_DATA_2023_08_17 for JK.csv', encoding='unicode_escape')
-df_patient_data = df_patient_data[['mrn', 'dob']].drop_duplicates()
-merged_df = pd.merge(merged_df, df_patient_data.rename({'mrn': patient_id_column}, axis=1), how='left')
-merged_df['dob'] = pd.to_datetime(merged_df['dob'])
-
-print(len(merged_df))
-
-# extra: merge PRS column
-df_prs_data = pd.read_csv('data/GA_progression_modelling_data_redone/amd_registry_prs_scores_23Jul2024.txt', sep='\t')
-df_prs_data = df_prs_data[['MRN', 'PGS004606']].drop_duplicates()
-merged_df = pd.merge(merged_df, df_prs_data.rename({'MRN': patient_id_column}, axis=1), how='left')
-
-print(len(merged_df))
-
-# extra: merge a, b, c gompertz values
-gompertz_data_file = os.path.join(save_to, 'gompertz_data_af/gompertz-parameters.csv')
-if os.path.exists(gompertz_data_file):
-    df_gompertz_data = pd.read_csv(gompertz_data_file)
-    df_gompertz_data = df_gompertz_data.drop_duplicates()
-    merged_df = pd.merge(merged_df, df_gompertz_data, how='left')
-else:
-    merged_df['A'] = [None]*len(merged_df)
-    merged_df['b'] = [None]*len(merged_df)
-    merged_df['c'] = [None]*len(merged_df)
-
-print(len(merged_df))
-
-# get specific columns we need and save
-merged_df = merged_df[[image_column, ga_seg_column, vessel_seg_column, patient_id_column, 'dob', 'PGS004606', laterality_column, date_column, 'Procedure', 'GA Size 1', 'GA Size 2', 'GA Size Adjudication', 'GA Size Final', 'px_area', 'mm_area', 'px_perimeter', 'mm_perimeter', 'n_foci', 'A', 'b', 'c']]
-merged_df.to_csv(os.path.join(save_to, filename), index=False)
+    # merge df_af with df_ga_manual
+    merged_df = pd.merge(df_af, df_ga_manual.rename({'MRN': patient_id_column, 'Eye': laterality_column, 'faf_date': date_column}, axis=1), how='left')
+    merged_df.to_csv(save_to, index=False)
