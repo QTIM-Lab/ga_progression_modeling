@@ -6,9 +6,9 @@ notebooks/
 .vscode/
 results/
 __pycache__/
+oct_2_af_registeration*
 
 # files
 *.pptx
-*.png
 *.j2k
 *.csv
