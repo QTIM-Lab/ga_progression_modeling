@@ -37,24 +37,24 @@ RESULTS_FOLDER=results
 
 # files
 SEG_MODEL_FILES=(
-"results/nkj5dgle_100/wandb-lightning/nkj5dgle/checkpoints/epoch=27-step=868.ckpt"
-"results/ggloik75_100/wandb-lightning/ggloik75/checkpoints/epoch=29-step=930.ckpt"
-"results/dx0nleu0_100/wandb-lightning/dx0nleu0/checkpoints/epoch=38-step=1209.ckpt"
-"results/oiwciudt_100/wandb-lightning/oiwciudt/checkpoints/epoch=32-step=1023.ckpt"
-"results/46i3qota_100/wandb-lightning/46i3qota/checkpoints/epoch=19-step=6280.ckpt"
-"results/4r9cizei_100/wandb-lightning/4r9cizei/checkpoints/epoch=22-step=7222.ckpt"
-"results/cahjqm4h_100/wandb-lightning/cahjqm4h/checkpoints/epoch=14-step=4710.ckpt"
-"results/gtmxysh6_100/wandb-lightning/gtmxysh6/checkpoints/epoch=3-step=1256.ckpt"
+"results/nkj5dgle_100/wandb-lightning/nkj5dgle/checkpoints/epoch=27-step=868.ckpt" # model 1 - correct
+"results/ggloik75_100/wandb-lightning/ggloik75/checkpoints/epoch=29-step=930.ckpt" # model 2 - correct
+"results/dx0nleu0_100/wandb-lightning/dx0nleu0/checkpoints/epoch=38-step=1209.ckpt" # model 3 - correct
+"results/oiwciudt_100/wandb-lightning/oiwciudt/checkpoints/epoch=32-step=1023.ckpt" # model 4 - correct
+"results/46i3qota_100/wandb-lightning/46i3qota/checkpoints/epoch=19-step=6280.ckpt" # model 5 - correct
+"results/4r9cizei_100/wandb-lightning/4r9cizei/checkpoints/epoch=22-step=7222.ckpt" # model 7 - incorrect
+"results/cahjqm4h_100/wandb-lightning/cahjqm4h/checkpoints/epoch=14-step=4710.ckpt" # model 8 - incorrect
+"results/gtmxysh6_100/wandb-lightning/gtmxysh6/checkpoints/epoch=3-step=1256.ckpt" # model 6 - correct
 )
 CONFIGS=(
-    "nopseudo_nohisteqtrain_nohisteqtest"
-    "nopseudo_nohisteqtrain_histeqtest"
-    "nopseudo_histeqtrain_nohisteqtest"
-    "nopseudo_histeqtrain_histeqtest"
-    "pseudo_nohisteqtrain_nohisteqtest"
-    "pseudo_nohisteqtrain_histeqtest"
-    "pseudo_histeqtrain_nohisteqtest"
-    "pseudo_histeqtrain_histeqtest"
+    "nopseudo_nohisteqtrain_nohisteqtest" # model 1
+    "nopseudo_nohisteqtrain_histeqtest" # model 2
+    "nopseudo_histeqtrain_nohisteqtest" # model 3
+    "nopseudo_histeqtrain_histeqtest" # model 4
+    "pseudo_nohisteqtrain_nohisteqtest" # model 5
+    "pseudo_nohisteqtrain_histeqtest" # model 6
+    "pseudo_histeqtrain_nohisteqtest" # model 7
+    "pseudo_histeqtrain_histeqtest" # model 8
 )
 USE_HIST=(
     false

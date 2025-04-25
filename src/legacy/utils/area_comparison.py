@@ -17,7 +17,7 @@ import cv2
 # utility functions
 def compute_pixel_area(seg, size):
     img = np.array(Image.open(seg).convert('L').resize(size))
-    img = np.where(img > 128, 1, 0)
+    img = np.where(img > 128, 1, 0).astype(np.uint8)
     area = np.sum(img)
     return area
 

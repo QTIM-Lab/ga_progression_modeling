@@ -6,7 +6,7 @@ notebooks/
 .vscode/
 results/
 __pycache__/
-oct_2_af_registeration*
+other_tasks/
 
 # files
 *.pptx

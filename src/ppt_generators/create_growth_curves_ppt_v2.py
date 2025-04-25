@@ -1,4 +1,7 @@
-import os, sys, random, json
+import os
+import sys
+import random
+import json
 import argparse
 import pandas as pd
 import torch
@@ -14,6 +17,15 @@ from pptx.util import Inches, Pt
 from math import isnan
 from datetime import datetime
 from torchvision.transforms import Resize, Grayscale, ToTensor
+from multiprocessing import Pool, cpu_count
+from functools import partial
+import tempfile
+import shutil
+from tqdm import tqdm
+import logging
+
+# Configure logging to be minimal
+logging.basicConfig(level=logging.WARNING)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -33,8 +45,11 @@ def parse_args():
     parser.add_argument('--ppt-folder', default='powerpoint', help='Folder to save ppt to.')
     parser.add_argument('--ppt-file', default='segmentation_analysis.pptx', help='Filename to save ppt as')
     parser.add_argument('--deidentify', action='store_true', help='Removes PHI from presentation')
-    parser.add_argument('--gompertz', action='store_true', help='Pull plots from gompertz folder.')
+    parser.add_argument('--gompertz', default=None, help='Pull plots from gompertz folder.')
+    parser.add_argument('--filter_regs', default=False, help='Filters out bad registrations by analysing affine matrix')
     args = parser.parse_args()
+
+    args.filter_regs = False if args.filter_regs == 'false' else True
     return args
 
 def is_valid_date(date_string):
@@ -65,17 +80,36 @@ def apply_registration(image_tensor, seg_tensor, grid_path):
         return image_tensor.squeeze(0), seg_tensor.squeeze(0), np.eye(3)
 
     # Load the sampling grid
-    params, grid = torch.load(grid_path)
+    try:
+        params, grid = torch.load(grid_path, weights_only=True)
     
-    # Apply the sampling grid
-    registered_image = F.grid_sample(image_tensor, grid)
-    registered_seg = F.grid_sample(seg_tensor, grid)
+        # Apply the sampling grid
+        registered_image = F.grid_sample(image_tensor, grid, align_corners=True)
+        registered_seg = F.grid_sample(seg_tensor, grid, align_corners=True)
 
-    # get the affine component
-    affine = params[0, -3:, :].T.numpy() # (2, 3)
-    affine = np.concatenate([affine[:, 1:], affine[:, :1]], axis=1)
-    affine = np.concatenate([affine, np.array([[0, 0, 1]])], axis=0)
-    affine = np.linalg.inv(affine)
+        # get the affine component
+        affine = params[0, -3:, :].T.numpy() # (2, 3)
+        affine = np.concatenate([affine[:, 1:], affine[:, :1]], axis=1)
+        affine = np.concatenate([affine, np.array([[0, 0, 1]])], axis=0)
+        affine = np.linalg.inv(affine)
+
+    except:
+        params = torch.load(grid_path, weights_only=True)
+
+        registered_image = torch.permute(image_tensor.squeeze(0), (1, 2, 0)).numpy() # (h, w, c)
+        registered_seg = torch.permute(seg_tensor.squeeze(0), (1, 2, 0)).numpy() # (h, w, c)
+        
+        affine = params.numpy().squeeze(0)
+        registered_image = cv2.warpAffine(registered_image, affine[:2, :], (registered_image.shape[0], registered_image.shape[1]))
+        registered_seg = cv2.warpAffine(registered_seg, affine[:2, :], (registered_seg.shape[0], registered_seg.shape[1]))
+
+        if registered_image.ndim == 2: # adding extra dim for grayscale warp
+            registered_image = registered_image[:, :, None]
+        registered_image = torch.tensor(registered_image).permute(2, 0, 1).unsqueeze(0)
+
+        if registered_seg.ndim == 2: # adding extra dim for grayscale warp
+            registered_seg = registered_seg[:, :, None]
+        registered_seg = torch.tensor(registered_seg).permute(2, 0, 1).unsqueeze(0)
     
     return registered_image.squeeze(0), registered_seg.squeeze(0), affine
 
@@ -168,14 +202,6 @@ def deviation(aff):
 
 def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_name, plot_name, thumbnails_wcontours_name, thumbnails_wocontours_name, baseline_wcontours_name, limits, config):
 
-    # make videos and plots folder
-    os.makedirs(os.path.join(save_to, 'metadata', 'videos_wcontours'), exist_ok=True)
-    os.makedirs(os.path.join(save_to, 'metadata', 'videos_wocontours'), exist_ok=True)
-    os.makedirs(os.path.join(save_to, 'metadata', 'plots'), exist_ok=True)
-    os.makedirs(os.path.join(save_to, 'metadata', 'thumbnails_wcontours'), exist_ok=True)
-    os.makedirs(os.path.join(save_to, 'metadata', 'thumbnails_wocontours'), exist_ok=True)
-    os.makedirs(os.path.join(save_to, 'metadata', 'baseline_wcontours'), exist_ok=True)
-
     # Initialize lists for frames and areas
     frames_with_contours = []
     frames_without_contours = []
@@ -190,28 +216,39 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
         image_tensor = load_image(row[config.img_col])
         seg_tensor = load_image(row[config.seg_col])
         if i > 0:
-            # apply_registration(image_tensor, seg_tensor, row.params)
             registered_image, registered_seg, aff = apply_registration(image_tensor, seg_tensor, row.params)
             registered_seg = (registered_seg > 0.5).int()
         else:
             registered_image, registered_seg = image_tensor.squeeze(0), seg_tensor.squeeze(0)
             registered_seg = (registered_seg > 0.5).int()
-            baseline_seg = registered_seg.clone()
+            # baseline_seg = registered_seg.clone()
             aff = np.eye(2)
 
         # remove cases with bad overlap with the baseline image
         # comment if using overlap metric
         # if overlap(registered_seg, baseline_seg) > 0.5:
         # remove cases with drastic transformations in the affine matrix
-        # comment if using deviation metric
-        # if deviation(aff) < 0.1:
-        image_with_contours = draw_contours(registered_image, registered_seg)
-        longitudinal_segs.append(registered_seg)
-        image_without_contours = (registered_image * 255.).int()
-    
-        # save registered images
-        frames_with_contours.append(tensor_to_numpy(image_with_contours))
-        frames_without_contours.append(tensor_to_numpy(image_without_contours))
+        
+        # filtering regs
+        if config.filter_regs:
+            if deviation(aff) < 0.1:
+                image_with_contours = draw_contours(registered_image, registered_seg)
+                longitudinal_segs.append(registered_seg)
+                image_without_contours = (registered_image * 255.).int()
+        
+                # save registered images
+                frames_with_contours.append(tensor_to_numpy(image_with_contours))
+                frames_without_contours.append(tensor_to_numpy(image_without_contours))
+
+        # not filtering regs
+        else:
+            image_with_contours = draw_contours(registered_image, registered_seg)
+            longitudinal_segs.append(registered_seg)
+            image_without_contours = (registered_image * 255.).int()
+        
+            # save registered images
+            frames_with_contours.append(tensor_to_numpy(image_with_contours))
+            frames_without_contours.append(tensor_to_numpy(image_without_contours))
 
         # compute AI area
         if config.area_ai_col is not None:
@@ -246,57 +283,45 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
         # save thumbnails for videos
         thumbnail_with_contours = frames_with_contours[0].astype(np.uint8)
         thumbnail_without_contours = frames_without_contours[0].astype(np.uint8)
-        Image.fromarray(thumbnail_with_contours).save(os.path.join(save_to, 'metadata', 'thumbnails_wcontours', thumbnails_wcontours_name))
-        Image.fromarray(thumbnail_without_contours).save(os.path.join(save_to, 'metadata', 'thumbnails_wocontours', thumbnails_wocontours_name))
+        Image.fromarray(thumbnail_with_contours).save(os.path.join(save_to, thumbnails_wcontours_name))
+        Image.fromarray(thumbnail_without_contours).save(os.path.join(save_to, thumbnails_wocontours_name))
 
         # create videos
         clip_with_contours = ImageSequenceClip(frames_with_contours, fps=3)
         clip_without_contours = ImageSequenceClip(frames_without_contours, fps=3)
 
         # create buffers and save
-        clip_with_contours.write_videofile(os.path.join(save_to, 'metadata', 'videos_wcontours', video_wcontours_name))
-        clip_without_contours.write_videofile(os.path.join(save_to, 'metadata', 'videos_wocontours', video_wocontours_name))
+        clip_with_contours.write_videofile(os.path.join(save_to, video_wcontours_name), verbose=False, logger=None)
+        clip_without_contours.write_videofile(os.path.join(save_to, video_wocontours_name), verbose=False, logger=None)
 
     # Create a figure with subplots that share the same x-axis
     min_date, max_date, min_area, max_area, min_peri, max_peri, min_foci, max_foci = limits
     fig, axs = plt.subplots(1, 1, figsize=(7, 8), sharex=True)
 
     # area vs time
-    axs.plot(timepoints, areas_ai, 'ro-', color='red')
-    axs.plot(timepoints, areas_manual, 'ro-', color='blue')
+    axs.plot(timepoints, areas_ai, 'ro-')
+    axs.plot(timepoints, areas_manual, 'bo-')
     axs.legend(['AI-computed Area', 'Manual'])
     axs.set_ylabel('GA Area (mm$^2$)')  # LaTeX formatting for mm²
     axs.set_xlim(min_date, max_date)
     axs.set_ylim(0, max_area)
 
-    # # perimeter vs time
-    # axs[1].plot(timepoints, perimeters_ai, 'ro-', color='red')
-    # axs[1].set_ylabel('GA Perimeter (mm)')
-    # axs[1].set_xlim(min_date, max_date)
-    # axs[1].set_ylim(0, max_peri)
-
-    # # number of foci vs time
-    # axs[2].plot(timepoints, n_foci_ai, 'ro-', color='red')
-    # axs[2].set_xlabel('Time')
-    # axs[2].set_ylabel('Number of GA Foci')
-    # axs[2].set_xlim(min_date, max_date)
-    # axs[2].set_ylim(0, max_foci)
-
     # Rotate x-axis tick labels vertically
     plt.xticks(rotation=90)
 
     # Save the figure
-    plt.savefig(os.path.join(save_to, 'metadata', 'plots', plot_name))
+    plt.savefig(os.path.join(save_to, plot_name))
     plt.close()
 
     # visualize topological map of GA
     baseline_image = load_image(df.iloc[0][config.img_col]).squeeze(0)
     visualize_topographical_map(baseline_image, longitudinal_segs, timepoints, cbarlimit=int((max_date - min_date).days/365.25)+1)
-    plt.savefig(os.path.join(save_to, 'metadata', 'baseline_wcontours', baseline_wcontours_name), dpi=300, bbox_inches='tight')
-
+    plt.savefig(os.path.join(save_to, baseline_wcontours_name), dpi=300, bbox_inches='tight')
+    plt.close()
+    
     return None
 
-def prepare_presentation_slide(slide, slide_title, video_with_contours_path, video_without_contours_path, thumbnail_with_contours_path, thumbnail_without_contours_path, plot_path):
+def prepare_presentation_slide(slide, slide_title, video_with_contours_path, video_without_contours_path, thumbnail_with_contours_path, thumbnail_without_contours_path, plot_path, config):
     title = slide.shapes.title
     title.text = slide_title
     # title.text_frame.paragraphs[0].font.size = Pt(40)
@@ -323,157 +348,205 @@ def prepare_presentation_slide(slide, slide_title, video_with_contours_path, vid
     plot_height = Inches(5.67)
     # bypass plot path with gompertz
     mrn, lat, _ = os.path.basename(plot_path).split('_')
-    if args.gompertz:
-        if os.path.exists(os.path.join(args.results_folder, f'gompertz_data_af/gompertz_plots/gompertz-fit-{mrn}_{lat}.png')):
-            plot_path = os.path.join(args.results_folder, f'gompertz_data_af/gompertz_plots/gompertz-fit-{mrn}_{lat}.png')
+    if config.gompertz is not None:
+        if os.path.exists(os.path.join(config.results_folder, config.gompertz, f'gompertz_plots/gompertz-fit-{mrn}_{lat}.png')):
+            plot_path = os.path.join(config.results_folder, config.gompertz, f'gompertz_plots/gompertz-fit-{mrn}_{lat}.png')
 
     if os.path.exists(plot_path):
         slide.shapes.add_picture(plot_path, Inches(4.5), Inches(1.5), width=plot_width, height=plot_height)
 
-if __name__ == '__main__':
+def process_patient_data(mrn_lat_tuple, df, save_to, limits, config, mrn_mapping):
+    """Process a single patient's data and return slide information.
+    
+    Args:
+        mrn_lat_tuple (tuple): Tuple of (mrn, lat) to process
+        df (pd.DataFrame): Input dataframe
+        save_to (str): Base directory to save files
+        limits (tuple): Data limits for plotting
+        config: Configuration object
+        mrn_mapping (dict): MRN mapping dictionary
+    """
 
-    # load args
-    args = parse_args()
+    mrn, lat = mrn_lat_tuple
+    lat_df = df[(df[config.patient_col] == mrn) & (df[config.laterality_col] == lat)].copy()
+    
+    # Skip processing if conditions aren't met
+    if config.multiple_visits and len(lat_df.ExamDate.unique()) == 1:
+        return None
+    
+    if config.specific_pat:
+        with open(os.path.join(config.results_folder, config.specific_pat), 'r') as f:
+            specific_patients = f.read().splitlines()
+        if f'{mrn}_{lat}' not in specific_patients:
+            return None
 
-    # load data
-    file = os.path.join(args.results_folder, args.results_file)
-    save_to = os.path.join(args.results_folder, args.ppt_folder)
+    lat_df[config.date_col] = pd.to_datetime(lat_df[config.date_col])
+    lat_df = lat_df.sort_values(by=config.date_col)
+    
+    # Get patient metadata
+    age_v1 = ('NA' if isinstance(lat_df.iloc[0].dob, float) else 
+              int((lat_df.iloc[0][config.date_col] - pd.to_datetime(lat_df.iloc[0].dob)).days / 365.25))
+    pr_score = 'NA' if isnan(lat_df.iloc[0].PGS004606) else lat_df.iloc[0].PGS004606
 
-    # remove and redo ppt creation
-    if os.path.exists(save_to):
-        from shutil import rmtree
-        rmtree(save_to)
+    # Create temporary directory for this patient's files
+    with tempfile.TemporaryDirectory() as temp_dir:
 
-    # make directories
-    os.makedirs(os.path.join(save_to, 'metadata'), exist_ok=True)
-
-    df = pd.read_csv(file)
-    # remove all paths where registration failed
-    # df = df[df.status != 'Fail']
-    if is_valid_date(df[args.date_col].min()):
-        df[args.date_col] = pd.to_datetime(df[args.date_col])
-
-    # get data limits for plotting
-    limits = (
-        datetime(df[args.date_col].min().year - 1, 1, 1) if isinstance(df[args.date_col].min(), datetime) else df[args.date_col].min() - 1, # min date
-        datetime(df[args.date_col].max().year + 1, 1, 1) if isinstance(df[args.date_col].min(), datetime) else df[args.date_col].min() + 1, # max date
-        df[args.area_ai_col].min() - 10, # min area 
-        df[args.area_ai_col].max() + 10, # max area
-        df[args.perimeter_ai_col].min() - 10, # min perimeter
-        df[args.perimeter_ai_col].max() + 10, # max perimeter
-        df[args.n_foci_ai_col].min() - 5, # min n foci
-        df[args.n_foci_ai_col].max() + 5 # max n foci
+        # Modified paths to use temporary directory
+        temp_paths = {
+            'videos_wcontours': os.path.join(temp_dir, f'{mrn}_{lat}_wcontours.mp4'),
+            'videos_wocontours': os.path.join(temp_dir, f'{mrn}_{lat}_wocontours.mp4'),
+            'plots': os.path.join(temp_dir, f'{mrn}_{lat}_plot.png'),
+            'thumbnails_wcontours': os.path.join(temp_dir, f'{mrn}_{lat}_wcontours.png'),
+            'thumbnails_wocontours': os.path.join(temp_dir, f'{mrn}_{lat}_wocontours.png'),
+            'baseline_wcontours': os.path.join(temp_dir, f'{mrn}_{lat}_baseline_wcontours.png')
+        }
+        
+        # Create videos and plots in temporary directory
+        create_videos_and_plots(
+            lat_df.reset_index(drop=True),
+            save_to=temp_dir,
+            video_wcontours_name=f'{mrn}_{lat}_wcontours.mp4',
+            video_wocontours_name=f'{mrn}_{lat}_wocontours.mp4',
+            plot_name=f'{mrn}_{lat}_plot.png',
+            thumbnails_wcontours_name=f'{mrn}_{lat}_wcontours.png',
+            thumbnails_wocontours_name=f'{mrn}_{lat}_wocontours.png',
+            baseline_wcontours_name=f'{mrn}_{lat}_baseline_wcontours.png',
+            limits=limits,
+            config=config
         )
 
-    # Create PowerPoint presentation
-    prs = Presentation()
-    slide_layout = prs.slide_layouts[5]
+        # Create required directories in final destination
+        for dir_type in ['videos_wcontours', 'videos_wocontours', 'plots', 'thumbnails_wcontours', 
+                        'thumbnails_wocontours', 'baseline_wcontours']:
+            os.makedirs(os.path.join(save_to, 'metadata', dir_type), exist_ok=True)
 
-    # deidentify patients
+        # Copy files to final destination with debug logging
+        for key, temp_path in temp_paths.items():
+            if os.path.exists(temp_path):
+                final_path = os.path.join(save_to, 'metadata', key, os.path.basename(temp_path))
+                try:
+                    shutil.copy2(temp_path, final_path)
+                except Exception as e:
+                    logging.warning(f"Failed to copy {os.path.basename(temp_path)}: {str(e)}")
+
+    return {
+        'mrn': mrn,
+        'lat': lat,
+        'mrn_mapped': mrn_mapping[mrn],
+        'age_v1': age_v1,
+        'pr_score': pr_score,
+        'in_registry': lat_df.in_registry.iloc[0]
+    }
+
+def main():
+    # Suppress moviepy's verbose output
+    import os
+    os.environ['IMAGEIO_FFMPEG_EXE'] = 'ffmpeg'
+
+    args = parse_args()
+    
+    # Load and prepare data
+    file = os.path.join(args.results_folder, args.results_file)
+    save_to = os.path.join(args.results_folder, args.ppt_folder)
+    
+    # Clean directory if exists
+    if os.path.exists(save_to):
+        shutil.rmtree(save_to)
+    
+    os.makedirs(os.path.join(save_to, 'metadata'), exist_ok=True)
+    
+    # Read and process dataframe
+    df = pd.read_csv(file)
+    if is_valid_date(df[args.date_col].min()):
+        df[args.date_col] = pd.to_datetime(df[args.date_col])
+    
+    # Calculate data limits
+    limits = (
+        datetime(df[args.date_col].min().year - 1, 1, 1) if isinstance(df[args.date_col].min(), datetime) else df[args.date_col].min() - 1,
+        datetime(df[args.date_col].max().year + 1, 1, 1) if isinstance(df[args.date_col].min(), datetime) else df[args.date_col].min() + 1,
+        df[args.area_ai_col].min() - 10,
+        df[args.area_ai_col].max() + 10,
+        df[args.perimeter_ai_col].min() - 10,
+        df[args.perimeter_ai_col].max() + 10,
+        df[args.n_foci_ai_col].min() - 5,
+        df[args.n_foci_ai_col].max() + 5
+    )
+    
+    # Create MRN mapping
     if args.deidentify:
-        # scramble MRN to 'patient1', 'patient2', etc.
         mrn_mapping = {int(mrn): f'patient{i+1}' for i, mrn in enumerate(df[args.patient_col].unique())}
-
-        # Save the MRN mapping to a JSON file
         with open(os.path.join(save_to, 'metadata/mrn_mapping.json'), 'w') as f:
             json.dump(mrn_mapping, f)
     else:
         mrn_mapping = {mrn: mrn for mrn in df[args.patient_col].unique()}
     
-    # step = 0
-    for mrn, mrn_df in df.groupby(args.patient_col):
-        for lat, lat_df in mrn_df.groupby(args.laterality_col):
-            
-            # skip single visits
-            if args.multiple_visits:
-                if len(lat_df.ExamDate.unique()) == 1:
-                    continue
-            # skip patient if not in desired set
-            elif args.specific_pat:
-                with open(os.path.join(args.results_folder, args.specific_pat), 'r') as f:
-                    specific_patients = f.read().splitlines()
-                if f'{mrn}_{lat}' not in specific_patients:
-                    continue
-
-            lat_df[args.date_col] = pd.to_datetime(lat_df[args.date_col])
-            lat_df = lat_df.sort_values(by=args.date_col)
-            assert isnan(lat_df.iloc[0]['params'])
-
-            # get age at first visit
-            if isinstance(lat_df.iloc[0].dob, float):
-                age_v1 = 'NA'
-            else:
-                age_v1 = int((lat_df.iloc[0][args.date_col] - pd.to_datetime(lat_df.iloc[0].dob)).days / 365.25)
-
-            # get PRS score
-            if isnan(lat_df.iloc[0].PGS004606):
-                pr_score = 'NA'
-            else:
-                pr_score = lat_df.iloc[0].PGS004606
-
-            # create videos and plots
-            create_videos_and_plots(
-                lat_df.reset_index(drop=True), 
-                save_to=save_to, 
-                video_wcontours_name=f'{mrn}_{lat}_wcontours.mp4', 
-                video_wocontours_name=f'{mrn}_{lat}_wocontours.mp4', 
-                plot_name=f'{mrn}_{lat}_plot.png',
-                thumbnails_wcontours_name=f'{mrn}_{lat}_wcontours.png',
-                thumbnails_wocontours_name=f'{mrn}_{lat}_wocontours.png',
-                baseline_wcontours_name=f'{mrn}_{lat}_wcontours.png',
-                limits=limits,
-                config=args
-                )
-
-            # add slides to presentation
-            slide = prs.slides.add_slide(slide_layout)
-
-            prepare_presentation_slide(
-                slide,
-                f'MRN: {mrn_mapping[mrn]} | Eye: {lat} | Age(v1): {age_v1} | PRS: {pr_score} | In registry?: {lat_df.in_registry.iloc[0]}',
-                os.path.join(save_to, 'metadata', 'videos_wcontours', f'{mrn}_{lat}_wcontours.mp4'),
-                os.path.join(save_to, 'metadata', 'videos_wocontours', f'{mrn}_{lat}_wocontours.mp4'),
-                os.path.join(save_to, 'metadata', 'thumbnails_wcontours', f'{mrn}_{lat}_wcontours.png'),
-                os.path.join(save_to, 'metadata', 'thumbnails_wocontours', f'{mrn}_{lat}_wocontours.png'),
-                os.path.join(save_to, 'metadata', 'plots', f'{mrn}_{lat}_plot.png')
-                )
-            
-            # add slide with topological view
-            slide = prs.slides.add_slide(slide_layout)
-            image_path = os.path.join(save_to, 'metadata', 'baseline_wcontours', f'{mrn}_{lat}_wcontours.png')
+    # Get list of all patient-laterality combinations
+    mrn_lat_pairs = [(mrn, lat) for mrn, mrn_df in df.groupby(args.patient_col) 
+                     for lat in mrn_df[args.laterality_col].unique()] #[:10]
+    
+    # Process patients in parallel
+    process_func = partial(process_patient_data, 
+                         df=df, 
+                         save_to=save_to, 
+                         limits=limits, 
+                         config=args, 
+                         mrn_mapping=mrn_mapping)
+    
+    with Pool(processes=cpu_count()) as pool:
+        results = list(tqdm(
+            pool.imap(process_func, mrn_lat_pairs),
+            total=len(mrn_lat_pairs),
+            desc="Processing patients",
+            unit="patient"
+        ))
+    
+    # Filter out None results and create presentation
+    results = [r for r in results if r is not None]
+    
+    # Create PowerPoint presentation
+    prs = Presentation()
+    slide_layout = prs.slide_layouts[5]
+    
+    for result in tqdm(results, desc="Creating slides", unit="slide"):
+        # Add main slide
+        slide = prs.slides.add_slide(slide_layout)
+        prepare_presentation_slide(
+            slide,
+            f'MRN: {result["mrn_mapped"]} | Eye: {result["lat"]} | Age(v1): {result["age_v1"]} | PRS: {result["pr_score"]} | In registry?: {result["in_registry"]}',
+            os.path.join(save_to, 'metadata', 'videos_wcontours', f'{result["mrn"]}_{result["lat"]}_wcontours.mp4'),
+            os.path.join(save_to, 'metadata', 'videos_wocontours', f'{result["mrn"]}_{result["lat"]}_wocontours.mp4'),
+            os.path.join(save_to, 'metadata', 'thumbnails_wcontours', f'{result["mrn"]}_{result["lat"]}_wcontours.png'),
+            os.path.join(save_to, 'metadata', 'thumbnails_wocontours', f'{result["mrn"]}_{result["lat"]}_wocontours.png'),
+            os.path.join(save_to, 'metadata', 'plots', f'{result["mrn"]}_{result["lat"]}_plot.png'),
+            args
+        )
+        
+        # Add topological view slide
+        slide = prs.slides.add_slide(slide_layout)
+        image_path = os.path.join(save_to, 'metadata', 'baseline_wcontours', f'{result["mrn"]}_{result["lat"]}_baseline_wcontours.png')
+        
+        if os.path.exists(image_path):
             image = Image.open(image_path)
-
-            # Get slide dimensions
-            slide_width = Inches(10)  # 10 inches
-            slide_height = Inches(7.5)  # 7.5 inches
-
-            # Calculate the aspect ratios of the image and the slide
+            
+            # Calculate image positioning and sizing
+            slide_width = Inches(10)
+            slide_height = Inches(7.5)
             image_aspect_ratio = image.width / image.height
             slide_aspect_ratio = slide_width / slide_height
-
-            # Determine scaling factor to fit the image to the slide
-            if image_aspect_ratio > slide_aspect_ratio:
-                # Image is wider relative to the slide; fit width to slide width
-                scale_factor = slide_width / image.width
-            else:
-                # Image is taller relative to the slide; fit height to slide height
-                scale_factor = slide_height / image.height
-
-            # Calculate the new image dimensions
+            
+            scale_factor = (slide_width / image.width 
+                          if image_aspect_ratio > slide_aspect_ratio 
+                          else slide_height / image.height)
+            
             new_width = image.width * scale_factor
             new_height = image.height * scale_factor
-
-            # Calculate position to center the image on the slide
             left = (slide_width - new_width) / 2
             top = (slide_height - new_height) / 2
-
+            
             slide.shapes.add_picture(image_path, left, top, width=new_width, height=new_height)
-            print(f'Processed mrn: {mrn}, fileeye: {lat}')
-
-        #     step += 1
-
-        # if step > 5:
-        #     break
-
+    
     # Save the presentation
     prs.save(os.path.join(save_to, args.ppt_file))
+
+if __name__ == '__main__':
+    main()

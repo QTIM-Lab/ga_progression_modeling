@@ -124,7 +124,6 @@ def register(af_df, slo_df, oct_df):
     # return reg_slo_image, reg_slo_ga_seg, reg_scanlines, cache
     return reg_slo_image, reg_scanlines, cache
 
-
 def copyimage(src, dst):
     # Split the destination path into directory, base filename, and extension
     directory, filename = os.path.split(dst)
