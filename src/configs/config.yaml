@@ -1,6 +1,6 @@
 dataset:
   modality: Af
-  folder: test
+  folder: data/test_data_pipeline
   csv_path: dataset_1.csv
   image_col: 'file_path_coris'
   ga_col: 'file_path_ga_seg'
@@ -18,10 +18,10 @@ models:
   segmentation:
     ga:
       hist_eq: True
-      weights: weights/ga_seg/epoch=32-step=1023.ckpt
+      weights: src/weights/ga_seg/epoch=32-step=1023.ckpt
     vessel:
       hist_eq: False
-      weights: weights/vessel_seg/
+      weights: src/weights/vessel_seg/
   registration:
     method: affine
     input: image

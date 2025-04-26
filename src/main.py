@@ -11,6 +11,7 @@ from rich.console import Console, Group
 from rich.progress import Progress, BarColumn, TextColumn
 from rich.live import Live
 from rich.panel import Panel
+from shutil import copy
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -117,7 +118,7 @@ def main(args):
         "--n_images",
         10
     ]
-    run_script(script_path='pipeline_scripts/1_get_modality_data.py', args=args)
+    run_script(script_path='src/pipeline_scripts/1_get_modality_data.py', args=args)
 
     # RUN SEGMENTATION PIPELINES
     console.print(f"[bold yellow]>> 'Segmenting GA/Vessels from {modality} data'")
@@ -127,7 +128,7 @@ def main(args):
     script_titles = {}
     ga_output_csv = results_folder / 'pipeline_files' / 'segmentations' / 'ga_segs.csv'
     if not ga_output_csv.exists():
-        script_configs["pipeline_scripts/2_segment_ga.py"] = (
+        script_configs["src/pipeline_scripts/2_segment_ga.py"] = (
             f"Segment GA on {modality} data",
             [
                 "--csv", results_folder / 'pipeline_files' / 'images_1.csv',
@@ -139,12 +140,12 @@ def main(args):
                 "--save_as", ga_output_csv
             ]
         )
-        output_queues["pipeline_scripts/2_segment_ga.py"] = queue.Queue()
-        script_titles["pipeline_scripts/2_segment_ga.py"] = "Segment GA"
+        output_queues["src/pipeline_scripts/2_segment_ga.py"] = queue.Queue()
+        script_titles["src/pipeline_scripts/2_segment_ga.py"] = "Segment GA"
 
     vessel_output_csv = results_folder / 'pipeline_files' / 'segmentations' / 'vessel_segs.csv'
     if not vessel_output_csv.exists():
-        script_configs['pipeline_scripts/3_segment_vessels.py'] = (
+        script_configs['src/pipeline_scripts/3_segment_vessels.py'] = (
             f"Segment Vessels on {modality} data",
             [
                 "--csv", results_folder / 'pipeline_files' / 'images_1.csv',
@@ -156,8 +157,8 @@ def main(args):
                 "--save_as", vessel_output_csv
             ]
         )
-        output_queues["pipeline_scripts/3_segment_vessels.py"] = queue.Queue()
-        script_titles["pipeline_scripts/3_segment_vessels.py"] = "Segment Vessels"
+        output_queues["src/pipeline_scripts/3_segment_vessels.py"] = queue.Queue()
+        script_titles["src/pipeline_scripts/3_segment_vessels.py"] = "Segment Vessels"
     run_parallel_scripts(console, script_configs, output_queues, script_titles)
     
     # MERGE SEGMENTATION PIPELINE RESULTS
@@ -171,7 +172,7 @@ def main(args):
         "--save_as",
         results_folder / 'pipeline_files' / 'images_2.csv',
     ]
-    run_script(script_path='pipeline_scripts/4_merge_datasets.py', args=args)
+    run_script(script_path='src/pipeline_scripts/4_merge_datasets.py', args=args)
 
     # COMPUTE GA AREAS
     console.print(f"[bold yellow]>> 'Computing GA areas data'")
@@ -191,7 +192,7 @@ def main(args):
         "--save_as",
         results_folder / 'pipeline_files' / 'images_3.csv',
     ]
-    run_script(script_path='pipeline_scripts/5_compute_ga_area.py', args=args)
+    run_script(script_path='src/pipeline_scripts/5_compute_ga_area.py', args=args)
 
     # REGISTER GA IMAGES
     console.print(f"[bold yellow]>> 'Register {modality} data'")
@@ -225,7 +226,10 @@ def main(args):
         "--save_as",
         results_folder / 'pipeline_files' / 'images_4.csv',
     ]
-    run_script(script_path='pipeline_scripts/6_register_images.py', args=args)
+    run_script(script_path='src/pipeline_scripts/6_register_images.py', args=args)
+
+    # 
+    copy(results_folder / 'pipeline_files' / 'images_4.csv', results_folder / 'images_processed.csv')
 
     # calculate runtime
     end_time = time.time()
@@ -235,7 +239,7 @@ def main(args):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser('')
-    parser.add_argument('--config', default='src/configs/coris.yaml')
+    parser.add_argument('--config', default='src/configs/config.yaml')
     args = parser.parse_args()
     main(args)
 
