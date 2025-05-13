@@ -1,0 +1,34 @@
+dataset:
+  modality: Af
+  folder: data/coris_db_subsets/stargardts/csvs/
+  csv_path: 4_patient_imaging_final.csv
+  image_col: 'file_path_coris'
+  ga_col: 'file_path_stgd_seg'
+  vessel_col: 'file_path_vessel_seg'
+  patient_id_col: 'PID'
+  laterality_col: 'Laterality'
+  modality_col: 'Procedure'
+  examdate_col: 'ExamDate'
+  size_x_col: 'SizeX'
+  size_y_col: 'SizeY'
+  scale_x_col: 'Scale_X'
+  scale_y_col: 'Scale_Y'
+
+models:
+  segmentation:
+    ga:
+      hist_eq: True
+      weights: src/weights/ga_seg/epoch=32-step=1023.ckpt
+    vessel:
+      hist_eq: False
+      weights: src/weights/vessel_seg/
+  registration:
+    method: affine
+    input: image
+    reg2start: True
+    tps: 0.
+    size: 256
+  device: cuda:1
+
+results:
+  folder: stgd_04292025
