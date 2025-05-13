@@ -119,7 +119,7 @@ class SequentialDataset(Dataset):
 
         # get the patient data
         mrn_data = self.data[(self.data[self.mrn_col] == pat) & (self.data[self.lat_col] == lat)]
-        mrn_data[self.sequence_col] = pd.to_datetime(mrn_data[self.sequence_col])
+        mrn_data.loc[:, self.sequence_col] = pd.to_datetime(mrn_data.loc[:, self.sequence_col]).dt.date
         mrn_data = mrn_data.sort_values(by=self.sequence_col)
         data['df'] = mrn_data
 
