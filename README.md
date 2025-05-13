@@ -67,15 +67,19 @@ Running `src/main.py` will save output in the results folder specified in the co
 
 Main Output:
 1. `images_processed.csv` : Processed data with segmentations and registrations saved in columns.
-2. `pipeline_files/images_1.csv` : Subset of the raw data csv, which contains all the rows for the specific modality. 
-3. `pipeline_files/images_2.csv` : Same as `images_1.csv` but with paths to the GA segmentation and Vessel segmentation included in columns.
-4. `pipeline_files/images_3.csv` : Same as `images_2.csv` but with GA areas computed and added in as an extra column.
-5. `pipeline_files/images_4.csv` : Same as `images_3.csv` but with paths to the registration parameters saved in the columns.
-6. `pipeline_files/segmentations/ga/`: Contains all the segmentations of GA in the images.
-7. `pipeline_files/segmentations/vessels/`: Contains all the segmentations of vessels in the images.
-8. `pipeline_files/registrations/registration_logs/`: Contains all the log files for registrations.
-9. `pipeline_files/registrations/registration_params/`: Contains all the parameter files for registrations. These are saved as `.pth` files.
-10. `pipeline_files/registrations/registration_keypoint_matches/`: Contains visuals of the keypoint matches between images found during registrations.
+2. `longitudinal.pptx`: Powerpoint presentation with longitudinal image segmentations, registered videos, and growth curves.
+3. `sequential.pptx`: Powerpoint presentation with each image segmentation indivitually shown.
+4. `pipeline_files/images_1.csv` : Subset of the raw data csv, which contains all the rows for the specific modality. 
+5. `pipeline_files/images_2.csv` : Same as `images_1.csv` but with paths to the GA segmentation and Vessel segmentation included in columns.
+6. `pipeline_files/images_3.csv` : Same as `images_2.csv` but with GA areas computed and added in as an extra column.
+7. `pipeline_files/images_4.csv` : Same as `images_3.csv` but with paths to the registration parameters saved in the columns.
+8. `pipeline_files/segmentations/ga/`: Contains all the segmentations of GA in the images.
+9. `pipeline_files/segmentations/vessels/`: Contains all the segmentations of vessels in the images.
+10. `pipeline_files/registrations/registration_logs/`: Contains all the log files for registrations.
+11. `pipeline_files/registrations/registration_params/`: Contains all the parameter files for registrations. These are saved as `.pth` files.
+12. `pipeline_files/registrations/registration_keypoint_matches/`: Contains visuals of the keypoint matches between images found during registrations.
+13. `pipeline_files/presentations/longitudinal/`: Contains all metadata for generating `longitudinal.pptx`
+14. `pipeline_files/presentations/sequential/`: Contains all metadata for generating `sequential.pptx`
 
 <!-- #### 2. Perform Gompertz Analysis (To be done separately using Aaron Beckwith's code)
 
