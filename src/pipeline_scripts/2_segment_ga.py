@@ -400,7 +400,7 @@ def main(args):
     )
     model.eval()
 
-    results = {'file_path_coris': [], args.ga_col: []}
+    results = {args.image_col: [], args.ga_col: []}
     for idx, batch in enumerate(dataloader):
         log_progress('Run Inference', idx+1, len(dataloader))
 
@@ -435,7 +435,7 @@ def main(args):
         
         # Generate the file path for saving
         cv2.imwrite(file_path, (pred_seg_map.squeeze() * 255).astype(np.uint8))
-        results['file_path_coris'].append(batch["image_path"][0])
+        results[args.image_col].append(batch["image_path"][0])
         results[args.ga_col].append(file_path)
 
     # merge with original data

@@ -113,14 +113,16 @@ def main(args):
         args1 = [
             "--csv",
             Path(config['dataset']['folder']) / config['dataset']['csv_path'],
+            "--image_col", 
+            config['dataset']['image_col'],
             "--modality_col",
             config['dataset']['modality_col'],
             "--modality_val",
             config['dataset']['modality'],
             "--save_as",
             modality_csv,
-            "--n_images", # only for testing
-            10
+            # "--n_images", # only for testing
+            # 10
         ]
         run_script(script_path='src/pipeline_scripts/1_get_modality_data.py', args=args1)
 
@@ -166,6 +168,12 @@ def main(args):
         script_titles["src/pipeline_scripts/3_segment_vessels.py"] = "Segment Vessels"
     run_parallel_scripts(console, script_configs, output_queues, script_titles)
     
+    # run_script(
+    #     'src/pipeline_scripts/2_segment_ga.py', 
+    #     args=script_configs["src/pipeline_scripts/2_segment_ga.py"][1]
+    #     )
+    # sys.exit(0)
+
     # MERGE SEGMENTATION PIPELINE RESULTS
     merged_csv = results_folder / 'pipeline_files' / 'images_2.csv'
     if not merged_csv.exists():

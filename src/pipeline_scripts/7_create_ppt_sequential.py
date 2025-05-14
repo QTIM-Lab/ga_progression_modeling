@@ -35,7 +35,7 @@ def process_images(original_img_path, seg_img_path, slide_width, slide_height):
     """
     # Load images
     original_img = np.array(Image.open(original_img_path)) #cv2.imread(original_img_path)
-    seg_img = np.array(Image.open(seg_img_path)) #cv2.imread(seg_img_path, cv2.IMREAD_GRAYSCALE)
+    seg_img = np.array(Image.open(seg_img_path).resize((original_img.shape[1], original_img.shape[0]))) #cv2.imread(seg_img_path, cv2.IMREAD_GRAYSCALE)
 
     # Resize images to fit half of slide height
     max_width = slide_width // 3  # Divide slide width by 3 for three images

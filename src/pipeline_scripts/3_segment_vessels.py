@@ -206,7 +206,7 @@ def main(args):
         model.eval()
         models.append(model.to(device))
 
-    results = {'file_path_coris': [], args.vessel_col: []}
+    results = {args.image_col: [], args.vessel_col: []}
     for idx, batch in enumerate(dataloader):
         log_progress('Run Inference', idx+1, len(dataloader))
 
@@ -232,7 +232,7 @@ def main(args):
 
         # Generate the file path for saving
         cv2.imwrite(file_path, (pred_seg_map.squeeze() * 255).astype(np.uint8))
-        results['file_path_coris'].append(batch["image_path"][0])
+        results[args.image_col].append(batch["image_path"][0])
         results[args.vessel_col].append(file_path)
 
     # merge with original data
