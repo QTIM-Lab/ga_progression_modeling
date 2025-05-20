@@ -1,11 +1,11 @@
 dataset:
   modality: Af
-  folder: data/MEEI
-  csv_path: PreprocessMassEE051325_handSloScale.csv
+  folder: data/MEEI/MEEI/csvs/
+  csv_path: images_3.csv
   image_col: 'file_path_image'
   ga_col: 'file_path_ga_seg'
   vessel_col: 'file_path_vessel_seg'
-  patient_id_col: 'PID'
+  patient_id_col: 'study_id'
   laterality_col: 'Laterality'
   modality_col: 'Procedure'
   examdate_col: 'ExamDate'
@@ -31,4 +31,4 @@ models:
   device: cuda:1
 
 results:
-  folder: meei_05142025
+  folder: meei_05192025

@@ -31,6 +31,23 @@ progress = Progress(
     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
 )
 
+# def is_date_format(date_string):
+#     formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%Y/%m/%d']
+    
+#     for date_format in formats:
+#         try:
+#             # Attempt to parse the date string using the current format
+#             datetime.strptime(date_string, date_format)
+#             return True
+#         except ValueError:
+#             continue  # If it fails, try the next format
+    
+#     return False
+
+def is_date_format(val):
+    import re
+    return bool(re.match(r"\d{2}-\d{2}-\d{4}", str(val)))
+
 def log_progress(task_name, progress, total):
     message = json.dumps({
         "task": task_name,
@@ -119,7 +136,10 @@ class SequentialDataset(Dataset):
 
         # get the patient data
         mrn_data = self.data[(self.data[self.mrn_col] == pat) & (self.data[self.lat_col] == lat)]
-        mrn_data.loc[:, self.sequence_col] = pd.to_datetime(mrn_data.loc[:, self.sequence_col]).dt.date
+        if is_date_format(mrn_data[self.sequence_col].dropna().iloc[0]):
+            mrn_data.loc[:, self.sequence_col] = pd.to_datetime(mrn_data.loc[:, self.sequence_col], errors='coerce', format='') #.dt.date
+        else:
+            mrn_data.loc[:, self.sequence_col] = mrn_data[self.sequence_col].astype(int)
         mrn_data = mrn_data.sort_values(by=self.sequence_col)
         data['df'] = mrn_data
 

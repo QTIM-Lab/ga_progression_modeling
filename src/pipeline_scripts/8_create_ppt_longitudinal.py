@@ -34,18 +34,22 @@ def log_progress(task_name, progress, total):
     print(message)
     sys.stdout.flush()
 
-def is_valid_date(date_string):
-    formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%Y/%m/%d']
+# def is_valid_date(date_string):
+#     formats = ['%m/%d/%Y', '%m-%d-%Y', '%Y-%m-%d', '%Y/%m/%d']
     
-    for date_format in formats:
-        try:
-            # Attempt to parse the date string using the current format
-            datetime.strptime(date_string, date_format)
-            return True
-        except ValueError:
-            continue  # If it fails, try the next format
+#     for date_format in formats:
+#         try:
+#             # Attempt to parse the date string using the current format
+#             datetime.strptime(date_string, date_format)
+#             return True
+#         except ValueError:
+#             continue  # If it fails, try the next format
     
-    return False
+#     return False
+
+def is_date_format(val):
+    import re
+    return bool(re.match(r"\d{2}-\d{2}-\d{4}", str(val)))
 
 def load_image(path, size=(256, 256), mode='rgb'):
     x = Image.open(path.replace('~', '/home/veturiy'))
@@ -208,7 +212,7 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
         # remove cases with drastic transformations in the affine matrix
         
         # filtering regs by affine matrix values
-        if config.filter_regs:
+        if config.filter_regs == True:
             if deviation(aff) < 0.1:
                 image_with_contours = draw_contours(registered_image, registered_seg)
                 longitudinal_segs.append(registered_seg)
@@ -249,6 +253,10 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
 
     # Create a figure with subplots that share the same x-axis
     min_date, max_date, min_area, max_area = limits
+    if isinstance(min_date, datetime):
+        cbarrange = int((max_date - min_date).days/365.25)+1
+    else:
+        cbarrange = int(max_date - min_date)+1
     fig, axs = plt.subplots(1, 1, figsize=(7, 8), sharex=True)
 
     # area vs time
@@ -267,7 +275,7 @@ def create_videos_and_plots(df, save_to, video_wcontours_name, video_wocontours_
 
     # visualize topological map of GA
     baseline_image = load_image(df.iloc[0][config.image_col]).squeeze(0)
-    visualize_topographical_map(baseline_image, longitudinal_segs, timepoints, cbarlimit=int((max_date - min_date).days/365.25)+1)
+    visualize_topographical_map(baseline_image, longitudinal_segs, timepoints, cbarlimit=cbarrange)
     plt.savefig(os.path.join(save_to, baseline_wcontours_name), dpi=300, bbox_inches='tight')
     plt.close()
     
@@ -299,7 +307,7 @@ def prepare_presentation_slide(slide, slide_title, video_with_contours_path, vid
     plot_width = Inches(4.91)
     plot_height = Inches(5.67)
     # bypass plot path with gompertz
-    mrn, lat, _ = os.path.basename(plot_path).split('_')
+    mrn, lat, _ = os.path.basename(plot_path).rsplit('_', 2)
     if config.gompertz_path is not None:
         if os.path.exists(os.path.join(config.gompertz_path, f'gompertz-fit-{mrn}_{lat}.png')):
             plot_path = os.path.join(config.gompertz_path, f'gompertz-fit-{mrn}_{lat}.png')
@@ -326,7 +334,7 @@ def process_patient_data(mrn_lat_tuple, df, total, limits, config, mrn_mapping):
     log_progress('Creating growth curves and videos', idx+1, total)
 
     # convert to datetime type and sort
-    lat_df[config.date_col] = pd.to_datetime(lat_df[config.date_col])
+    # lat_df[config.date_col] = pd.to_datetime(lat_df[config.date_col])
     lat_df = lat_df.sort_values(by=config.date_col)
     
     # Create temporary directory for this patient's files
@@ -377,13 +385,15 @@ def process_patient_data(mrn_lat_tuple, df, total, limits, config, mrn_mapping):
 def process_data(df, args):
 
     # check if valid date
-    if is_valid_date(df[args.date_col].min()):
+    if is_date_format(df[args.date_col].min()):
         df[args.date_col] = pd.to_datetime(df[args.date_col])
+    else:
+        df[args.date_col] = df[args.date_col].astype(int)
     
     # Calculate data limits (for plotting)
     limits = (
         datetime(df[args.date_col].min().year - 1, 1, 1) if isinstance(df[args.date_col].min(), datetime) else df[args.date_col].min() - 1,
-        datetime(df[args.date_col].max().year + 1, 1, 1) if isinstance(df[args.date_col].min(), datetime) else df[args.date_col].min() + 1,
+        datetime(df[args.date_col].max().year + 1, 1, 1) if isinstance(df[args.date_col].max(), datetime) else df[args.date_col].max() + 1,
         df[args.area_col].min() - 10,
         df[args.area_col].max() + 10
     )
@@ -492,6 +502,6 @@ if __name__ == '__main__':
     parser.add_argument('--save_as', default='results/test/pipeline_files/powerpoint_longitudinal/powerpoint_longitudinal.pptx', help='Filename to save ppt as')
     parser.add_argument('--deidentify', action='store_true', help='Removes PHI from presentation')
     parser.add_argument('--gompertz_path', default=None, help='Path to gompertz folder.')
-    parser.add_argument('--filter_regs', default=False, type=bool, help='Filters out bad registrations by analysing affine matrix')
+    parser.add_argument('--filter_regs', action='store_true', help='Filters out bad registrations by analysing affine matrix')
     args = parser.parse_args()
     main(args)

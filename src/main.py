@@ -289,8 +289,7 @@ def main(args):
                 "--output_folder", results_folder / 'pipeline_files' / 'presentations' / 'longitudinal',
                 "--save_as", longitudinal_output_ppt, 
                 *(["--deidentify"] if args.deidentify else []),
-                "--gompertz_path", args.gompertz_path,
-                "--filter_regs", True
+                "--gompertz_path", args.gompertz_path
             ]
         )
         output_queues["src/pipeline_scripts/8_create_ppt_longitudinal.py"] = queue.Queue()
@@ -298,12 +297,6 @@ def main(args):
     
     # run scripts in parallel
     run_parallel_scripts(console, script_configs, output_queues, script_titles)
-
-    # run_script(
-    #     'src/pipeline_scripts/8_create_ppt_longitudinal.py', 
-    #     args=script_configs["src/pipeline_scripts/8_create_ppt_longitudinal.py"][1]
-    #     )
-    # sys.exit(0)
 
     # copy results csv over
     final_csv = results_folder / 'images_processed.csv'
