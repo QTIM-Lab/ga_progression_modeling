@@ -21,6 +21,7 @@ import tempfile
 import shutil
 from tqdm import tqdm
 import logging
+from dateutil.parser import parse
 
 # Configure logging to be minimal
 logging.basicConfig(level=logging.WARNING)
@@ -47,9 +48,16 @@ def log_progress(task_name, progress, total):
     
 #     return False
 
-def is_date_format(val):
-    import re
-    return bool(re.match(r"\d{2}-\d{2}-\d{4}", str(val)))
+# def is_date_format(val):
+#     import re
+#     return bool(re.match(r"\d{2}-\d{2}-\d{4}", str(val)))
+
+def is_date(string):
+    try:
+        parse(string, fuzzy=False)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 def load_image(path, size=(256, 256), mode='rgb'):
     x = Image.open(path.replace('~', '/home/veturiy'))
@@ -385,7 +393,7 @@ def process_patient_data(mrn_lat_tuple, df, total, limits, config, mrn_mapping):
 def process_data(df, args):
 
     # check if valid date
-    if is_date_format(df[args.date_col].min()):
+    if is_date(df[args.date_col].min()):
         df[args.date_col] = pd.to_datetime(df[args.date_col])
     else:
         df[args.date_col] = df[args.date_col].astype(int)

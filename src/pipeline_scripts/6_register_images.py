@@ -16,6 +16,7 @@ from eyeliner.utils import none_or_str, load_image
 from eyeliner.lightglue import viz2d
 from matplotlib import pyplot as plt
 import json
+from dateutil.parser import parse
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -44,9 +45,16 @@ progress = Progress(
     
 #     return False
 
-def is_date_format(val):
-    import re
-    return bool(re.match(r"\d{2}-\d{2}-\d{4}", str(val)))
+# def is_date_format(val):
+#     import re
+#     return bool(re.match(r"\d{2}-\d{2}-\d{4}", str(val))) or bool(re.match(r"\d{2}/\d{2}/\d{4}", str(val)))
+
+def is_date(string):
+    try:
+        parse(string, fuzzy=False)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 def log_progress(task_name, progress, total):
     message = json.dumps({
@@ -136,8 +144,10 @@ class SequentialDataset(Dataset):
 
         # get the patient data
         mrn_data = self.data[(self.data[self.mrn_col] == pat) & (self.data[self.lat_col] == lat)]
-        if is_date_format(mrn_data[self.sequence_col].dropna().iloc[0]):
-            mrn_data.loc[:, self.sequence_col] = pd.to_datetime(mrn_data.loc[:, self.sequence_col], errors='coerce', format='') #.dt.date
+        # print(mrn_data[self.sequence_col].dropna().iloc[0], is_date_format(mrn_data[self.sequence_col].dropna().iloc[0]))
+        # sys.exit(0)
+        if is_date(mrn_data[self.sequence_col].dropna().iloc[0]):
+            mrn_data.loc[:, self.sequence_col] = pd.to_datetime(mrn_data.loc[:, self.sequence_col]).dt.date
         else:
             mrn_data.loc[:, self.sequence_col] = mrn_data[self.sequence_col].astype(int)
         mrn_data = mrn_data.sort_values(by=self.sequence_col)

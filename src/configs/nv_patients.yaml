@@ -1,6 +1,6 @@
 dataset:
   modality: Af
-  folder: data/coris_db_subsets/nv_patients/csvs/
+  folder: data/coris_db_subsets/subsets/nv_patients/csvs/
   csv_path: 7_patient_imaging_specific_patients.csv
   image_col: 'file_path_coris'
   ga_col: 'file_path_ga_seg'
@@ -31,4 +31,4 @@ models:
   device: cuda:1
 
 results:
-  folder: nv_patients_talisa_04292025
+  folder: nv_patients_talisa_05202025

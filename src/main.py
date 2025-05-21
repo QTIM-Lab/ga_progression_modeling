@@ -267,7 +267,8 @@ def main(args):
                 "--date_col", config['dataset']['examdate_col'],
                 "--area_col", 'mm_area',
                 "--output_folder", results_folder / 'pipeline_files' / 'presentations' / 'sequential',
-                "--save_as", sequential_output_ppt
+                "--save_as", sequential_output_ppt,
+                "--register"
             ]
         )
         output_queues["src/pipeline_scripts/7_create_ppt_sequential.py"] = queue.Queue()
@@ -297,6 +298,12 @@ def main(args):
     
     # run scripts in parallel
     run_parallel_scripts(console, script_configs, output_queues, script_titles)
+
+    # run_script(
+    #     'src/pipeline_scripts/8_create_ppt_longitudinal.py', 
+    #     args=script_configs["src/pipeline_scripts/8_create_ppt_longitudinal.py"][1]
+    #     )
+    # sys.exit(0)
 
     # copy results csv over
     final_csv = results_folder / 'images_processed.csv'
